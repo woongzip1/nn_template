@@ -22,36 +22,38 @@ dataset:
     path_dir_nb: ["/home/woongzip/dataset_12/USAC44_12_core"]
     path_dir_wb: ["/home/woongzip/dataset_12/USAC44_GT"]
 
+
+stft:
+  hop_size: 80
+  win_size: 320
+  n_fft: 1024
+
 # GENERATOR
 generator:
-  type: MBSEANet_pqmf
-  in_channels: 0 #FE
-  min_dim: 64     #SEANet 56?
-  visualize: False
-  c_in: 5
-  c_out: 10
-  strides: [1,2,2,2]
-  subband_num: False
-  fe_weight_path: False
-  out_bias: False
+  fine_tune: False
+  type: generator
+  hparams:
+    ConvNeXt_channels: 512
+    ConvNeXt_layers: 8
+    n_fft: 1024
 
 # DISCRIMINATOR
 discriminator: 
-  # type: MultiBandSTFTDiscriminator
-  MultiBandSTFTDiscriminator_config:
-      C: 32
-      n_fft_list: [2048, 1024, 512]
-      hop_len_list: [512, 256, 128]
-      band_split_ratio: # 0.15 - 0.45 / 0.06
-          - [0.15, 0.21] # check only 4.5 kHz above
-          - [0.21, 0.27] # 0.1 -> 0.1875
-          - [0.27, 0.33]
-          - [0.33, 0.39]
-          - [0.39, 0.45]
-
-  PeriodDiscriminator_config:
-      period_list: [2,3,5,7,11]
-      C_period: 24
+  types: ['MultiBandSTFTDiscriminator', 'PeriodDiscriminator']
+  configs:
+    MultiBandSTFTDiscriminator:
+        C: 32
+        n_fft_list: [2048, 1024, 512]
+        hop_len_list: [512, 256, 128]
+        band_split_ratio: # 0.15 - 0.45 / 0.06
+            - [0.15, 0.21] # check only 4.5 kHz above
+            - [0.21, 0.27] # 0.1 -> 0.1875
+            - [0.27, 0.33]
+            - [0.33, 0.39]
+            - [0.39, 0.45]
+    PeriodDiscriminator:
+        period_list: [2,3,5,7,11]
+        C_period: 24
 
 loss:
   ms_mel_loss_config:
@@ -63,6 +65,10 @@ loss:
             sr: 48000
             fmin: 0
             core_cutoff: 4500
+  
+  lambda_mel_loss: 0
+  lambda_fm_loss: 6
+  lambda_adv_loss: 3
 
 optim:
   learning_rate_ft: 0.0001

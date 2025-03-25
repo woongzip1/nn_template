@@ -12,15 +12,13 @@ import wandb
 from tqdm import tqdm
 from box import Box
 
-# from trainer import Trainer 
 from utils import *
 
 ## models
-from models.prepare_models import MODEL_MAP
-# from models.prepare_models import prepare_generator, prepare_discriminator
+from models.prepare_models import MODEL_MAP, prepare_discriminator, prepare_generator
 ## dataset
 from dataset import Dataset, make_dataset
-# from trainer import Trainer
+from trainer import Trainer
 
 ### values
 DEVICE = f'cuda:0' if torch.cuda.is_available() else 'cpu'
@@ -70,26 +68,24 @@ def main(if_log_step):
     
     # Prepare dataloader
     train_loader, val_loader = prepare_dataloader(args.config)
-    
-    return 0
 
     # Model selection
     generator = prepare_generator(config, MODEL_MAP)
     discriminator = prepare_discriminator(config)
 
     # Optimizers
-    if config['generator']['fe_weight_path']:
+    if config.generator.fine_tune:
         print("------------Fine Tuning!------------")
-        non_fe_params = [p for p in generator.parameters() if p not in set(generator.feature_encoder.parameters())]
-
-        optim_G = torch.optim.Adam(
-            [
-                {'params': generator.feature_encoder.parameters(), 'lr': config['optim']['learning_rate_ft']}, 
-                {'params': non_fe_params, 'lr': config['optim']['learning_rate']}  
-            ],
-            betas=(config['optim']['B1'], config['optim']['B2'])
-        )
-        optim_D = torch.optim.Adam(discriminator.parameters(), lr=config['optim']['learning_rate'], betas=(config['optim']['B1'], config['optim']['B2']))
+        pass
+    #     non_fe_params = [p for p in generator.parameters() if p not in set(generator.feature_encoder.parameters())]
+    #     optim_G = torch.optim.Adam(
+    #         [
+    #             {'params': generator.feature_encoder.parameters(), 'lr': config['optim']['learning_rate_ft']}, 
+    #             {'params': non_fe_params, 'lr': config['optim']['learning_rate']}  
+    #         ],
+    #         betas=(config['optim']['B1'], config['optim']['B2'])
+    #     )
+    #     optim_D = torch.optim.Adam(discriminator.parameters(), lr=config['optim']['learning_rate'], betas=(config['optim']['B1'], config['optim']['B2']))
     else: # scratch
         optim_G = torch.optim.Adam(generator.parameters(), lr=config['optim']['learning_rate'], betas=(config['optim']['B1'], config['optim']['B2']))
         optim_D = torch.optim.Adam(discriminator.parameters(), lr=config['optim']['learning_rate'], betas=(config['optim']['B1'], config['optim']['B2']))
@@ -102,24 +98,24 @@ def main(if_log_step):
         # scheduler_G = TriStageLRScheduler(optimizer=optim_G, **config['tri_scheduler'])
         # scheduler_D = TriStageLRScheduler(optimizer=optim_D, **config['tri_scheduler'])
     else:
-        print("*** Exp LRScheduler ***")
+        print("🚀 *** Exp LRScheduler ***")
         scheduler_G = lr_scheduler.ExponentialLR(optim_G, gamma=config['optim']['scheduler_gamma'])
         scheduler_D = lr_scheduler.ExponentialLR(optim_D, gamma=config['optim']['scheduler_gamma'])
 
-#     # Trainer initialization
-#     trainer = Trainer(generator, discriminator, train_loader, val_loader, optim_G, optim_D, config, DEVICE, 
-#                       scheduler_G=scheduler_G, scheduler_D=scheduler_D, if_log_step=if_log_step, if_log_to_wandb=if_log_to_wandb)
+    # Trainer initialization
+    trainer = Trainer(generator, discriminator, train_loader, val_loader, optim_G, optim_D, config, DEVICE, 
+                      scheduler_G=scheduler_G, scheduler_D=scheduler_D, if_log_step=if_log_step, if_log_to_wandb=if_log_to_wandb)
     
-#     if config['train']['ckpt']:
-#         trainer.load_checkpoints(config['train']['ckpt_path'])
+    if config['train']['ckpt']:
+        trainer.load_checkpoints(config['train']['ckpt_path'])
     
-#     torch.manual_seed(42)
-#     random.seed(42)
+    torch.manual_seed(42)
+    random.seed(42)
     
-#     # Train
-#     warnings.filterwarnings("ignore", category=UserWarning, message="At least one mel filterbank has")
-#     warnings.filterwarnings("ignore", category=UserWarning, message="Plan failed with a cudnnException")
-#     trainer.train(num_epochs=config['train']['max_epochs'])
+    # Train
+    # warnings.filterwarnings("ignore", category=UserWarning, message="At least one mel filterbank has")
+    # warnings.filterwarnings("ignore", category=UserWarning, message="Plan failed with a cudnnException")
+    trainer.train(num_epochs=config['train']['max_epochs'])
 
 if __name__ == "__main__":
     main(if_log_step=True)

@@ -87,7 +87,7 @@ class Dataset(torch.utils.data.Dataset):
         self.filenames = list(zip(paths_wav_wb, paths_wav_nb))
         print(f"LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers loaded!")
 
-    def _multiple_pad(self, wav, N=2048):
+    def _multiple_pad(self, wav, N=80):
         pad_len = (N - wav.shape[-1] % N) % N
         wav = torch.nn.functional.pad(wav, (0, pad_len), mode='constant', value=0)
         return wav
@@ -96,7 +96,7 @@ class Dataset(torch.utils.data.Dataset):
         return len(self.filenames)
 
     def __getitem__(self, idx):
-        N = 2048
+        N = 80
         path_wav_wb, path_wav_nb = self.filenames[idx]
 
         wav_nb, sr_nb = ta.load(path_wav_nb)
