@@ -1,0 +1,80 @@
+project_name: 'project1'
+run_name: "exp1"
+
+dataset:
+  ratio: 1
+  wb_train: [
+              "/home/woongjib/Projects/Dataset_Crop/Splits/GT/VCTK",
+              ]
+  nb_train: [
+              "/home/woongjib/Projects/Dataset_Crop/Splits/SBR_12_Core/VCTK",
+              ]  
+  wb_test: [
+              "/home/woongjib/Projects/USAC/USAC44_GT", 
+              ]
+  nb_test: [
+              "/home/woongjib/Projects/USAC/USAC44_12_core", 
+              ]
+  
+generator:
+  type: MBSEANet_pqmf
+  in_channels: 0 #FE
+  min_dim: 64     #SEANet 56?
+  visualize: False
+  c_in: 5
+  c_out: 10
+  strides: [1,2,2,2]
+  subband_num: False
+  fe_weight_path: False
+  out_bias: False
+
+discriminator: 
+  # type: MultiBandSTFTDiscriminator
+  MultiBandSTFTDiscriminator_config:
+      C: 32
+      n_fft_list: [2048, 1024, 512]
+      hop_len_list: [512, 256, 128]
+      band_split_ratio: # 0.15 - 0.45 / 0.06
+          - [0.15, 0.21] # check only 4.5 kHz above
+          - [0.21, 0.27] # 0.1 -> 0.1875
+          - [0.27, 0.33]
+          - [0.33, 0.39]
+          - [0.39, 0.45]
+
+  PeriodDiscriminator_config:
+      period_list: [2,3,5,7,11]
+      C_period: 24
+
+loss:
+  ms_mel_loss_config:
+            n_fft_list: [32, 64, 128, 256, 512, 1024, 2048]
+            hop_ratio: 0.25
+            mel_bin_list: [5, 10, 20, 40, 80, 160, 320]
+            reduction: mean
+            loss_ratio: 1.0
+            sr: 48000
+            fmin: 0
+            core_cutoff: 4500
+
+optim:
+  learning_rate_ft: 0.0001
+  learning_rate: 1.0e-4
+  scheduler_gamma: 0.999996
+  B1: 0.5
+  B2: 0.9
+  
+use_tri_stage:
+  False
+  
+train:
+  val_step: 1 # 180분 10000 step
+  pretrain_step: False # else False
+  ckpt_save_dir: "./ckpts/exp21"
+  max_epochs: 60
+
+  ckpt: False
+  ckpt_path: "/home/woongjib/Projects/MBSEANet/ckpts/exp21/step_260.0k_lsdh_0.4475.pth"
+
+eval:
+  eval_dir_audio: "/home/woongjib/Projects/mbseanet_results/model_outputs/exp21"
+  eval_dir_speech: None
