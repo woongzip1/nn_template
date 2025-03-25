@@ -1,21 +1,28 @@
 project_name: 'project1'
 run_name: "exp1"
 
+# DATALOADER
+dataloader:
+  batch_size: 16
+  num_workers: 4
+  prefetch_factor: 2
+  persistent_workers: True
+  pin_memory: True
+
+# DATASET
 dataset:
   ratio: 1
-  wb_train: [
-              "/home/woongjib/Projects/Dataset_Crop/Splits/GT/VCTK",
-              ]
-  nb_train: [
-              "/home/woongjib/Projects/Dataset_Crop/Splits/SBR_12_Core/VCTK",
-              ]  
-  wb_test: [
-              "/home/woongjib/Projects/USAC/USAC44_GT", 
-              ]
-  nb_test: [
-              "/home/woongjib/Projects/USAC/USAC44_12_core", 
-              ]
-  
+  common:
+    seg_len: 0.9
+    sr: 48000
+  train:
+    path_dir_nb: ["/home/woongzip/dataset_12/SBR_12_Core/VCTK"]
+    path_dir_wb: ["/home/woongzip/dataset_12/GT/VCTK"]
+  val:
+    path_dir_nb: ["/home/woongzip/dataset_12/USAC44_12_core"]
+    path_dir_wb: ["/home/woongzip/dataset_12/USAC44_GT"]
+
+# GENERATOR
 generator:
   type: MBSEANet_pqmf
   in_channels: 0 #FE
@@ -28,6 +35,7 @@ generator:
   fe_weight_path: False
   out_bias: False
 
+# DISCRIMINATOR
 discriminator: 
   # type: MultiBandSTFTDiscriminator
   MultiBandSTFTDiscriminator_config:

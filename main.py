@@ -16,10 +16,10 @@ from box import Box
 from utils import *
 
 ## models
-from models.model_map import MODEL_MAP
+from models.prepare_models import MODEL_MAP
 # from models.prepare_models import prepare_generator, prepare_discriminator
 ## dataset
-# from dataset import CustomDataset
+from dataset import Dataset, make_dataset
 # from trainer import Trainer
 
 ### values
@@ -40,31 +40,21 @@ def load_config(config_path):
         return Box(yaml.safe_load(file))
 
 def prepare_dataloader(config_path):
-    """
-    Args:
-        config_path (str): Path to the YAML configuration file.
-    
-    Returns:
-        tuple: (train_dataloader, val_dataloader)
-    """
     config = load_config(config_path)
-    
-    # Optionally split train data
-    if config['dataset']['ratio'] < 1:
-        train_size = int(config['dataset']['ratio'] * len(train_dataset))
+    train_dataset = make_dataset(config, 'train')
+    val_dataset = make_dataset(config, 'val')
+
+    # Optional ratio split
+    if config.dataset.ratio < 1:
+        train_size = int(config.dataset.ratio * len(train_dataset))
         _, train_dataset = random_split(train_dataset, [len(train_dataset) - train_size, train_size])
 
-    # Create DataLoaders
-    train_dataloader = DataLoader(
-        train_dataset, 
-        batch_size=config['dataset']['batch_size'], 
-        shuffle=True,
-        num_workers=config['dataset']['num_workers'], 
-        prefetch_factor=2,
-        persistent_workers=True, 
-        pin_memory=True
-    )
-    return train_dataloader, val_dataloader
+    train_loader = DataLoader(train_dataset, shuffle=True, **config.dataloader)
+    val_loader_args = config.dataloader
+    val_loader_args.batch_size = 1
+    val_loader = DataLoader(val_dataset, shuffle=True, **val_loader_args)
+
+    return train_loader, val_loader
 
 def main(if_log_step):
     args = parse_args()
@@ -79,39 +69,42 @@ def main(if_log_step):
         wandb.init(project=config['project_name'], entity='woongzip1', config=config, name=config['run_name'], notes=config['run_name'])
     
     # Prepare dataloader
-#     train_loader, val_loader = prepare_dataloader(args.config)
+    train_loader, val_loader = prepare_dataloader(args.config)
     
-#     # Model selection
-#     generator = prepare_generator(config, MODEL_MAP)
-#     discriminator = prepare_discriminator(config)
+    return 0
 
-#     # Optimizers
-#     if config['generator']['fe_weight_path']:
-#         print("------------Fine Tuning!------------")
-#         non_fe_params = [p for p in generator.parameters() if p not in set(generator.feature_encoder.parameters())]
+    # Model selection
+    generator = prepare_generator(config, MODEL_MAP)
+    discriminator = prepare_discriminator(config)
 
-#         optim_G = torch.optim.Adam(
-#             [
-#                 {'params': generator.feature_encoder.parameters(), 'lr': config['optim']['learning_rate_ft']}, 
-#                 {'params': non_fe_params, 'lr': config['optim']['learning_rate']}  
-#             ],
-#             betas=(config['optim']['B1'], config['optim']['B2'])
-#         )
-#         optim_D = torch.optim.Adam(discriminator.parameters(), lr=config['optim']['learning_rate'], betas=(config['optim']['B1'], config['optim']['B2']))
-#     else: # scratch
-#         optim_G = torch.optim.Adam(generator.parameters(), lr=config['optim']['learning_rate'], betas=(config['optim']['B1'], config['optim']['B2']))
-#         optim_D = torch.optim.Adam(discriminator.parameters(), lr=config['optim']['learning_rate'], betas=(config['optim']['B1'], config['optim']['B2']))
+    # Optimizers
+    if config['generator']['fe_weight_path']:
+        print("------------Fine Tuning!------------")
+        non_fe_params = [p for p in generator.parameters() if p not in set(generator.feature_encoder.parameters())]
+
+        optim_G = torch.optim.Adam(
+            [
+                {'params': generator.feature_encoder.parameters(), 'lr': config['optim']['learning_rate_ft']}, 
+                {'params': non_fe_params, 'lr': config['optim']['learning_rate']}  
+            ],
+            betas=(config['optim']['B1'], config['optim']['B2'])
+        )
+        optim_D = torch.optim.Adam(discriminator.parameters(), lr=config['optim']['learning_rate'], betas=(config['optim']['B1'], config['optim']['B2']))
+    else: # scratch
+        optim_G = torch.optim.Adam(generator.parameters(), lr=config['optim']['learning_rate'], betas=(config['optim']['B1'], config['optim']['B2']))
+        optim_D = torch.optim.Adam(discriminator.parameters(), lr=config['optim']['learning_rate'], betas=(config['optim']['B1'], config['optim']['B2']))
         
-#     # Schedulers
-#     if config['use_tri_stage']:
-#         from scheduler import TriStageLRScheduler
-#         print("*** TriStageLRScheduler ***")
-#         scheduler_G = TriStageLRScheduler(optimizer=optim_G, **config['tri_scheduler'])
-#         scheduler_D = TriStageLRScheduler(optimizer=optim_D, **config['tri_scheduler'])
-#     else:
-#         print("*** Exp LRScheduler ***")
-#         scheduler_G = lr_scheduler.ExponentialLR(optim_G, gamma=config['optim']['scheduler_gamma'])
-#         scheduler_D = lr_scheduler.ExponentialLR(optim_D, gamma=config['optim']['scheduler_gamma'])
+    # Schedulers
+    if config['use_tri_stage']:
+        pass
+        # from scheduler import TriStageLRScheduler
+        # print("*** TriStageLRScheduler ***")
+        # scheduler_G = TriStageLRScheduler(optimizer=optim_G, **config['tri_scheduler'])
+        # scheduler_D = TriStageLRScheduler(optimizer=optim_D, **config['tri_scheduler'])
+    else:
+        print("*** Exp LRScheduler ***")
+        scheduler_G = lr_scheduler.ExponentialLR(optim_G, gamma=config['optim']['scheduler_gamma'])
+        scheduler_D = lr_scheduler.ExponentialLR(optim_D, gamma=config['optim']['scheduler_gamma'])
 
 #     # Trainer initialization
 #     trainer = Trainer(generator, discriminator, train_loader, val_loader, optim_G, optim_D, config, DEVICE, 

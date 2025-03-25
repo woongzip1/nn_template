@@ -1,12 +1,14 @@
 import os
+import sys
 import random
+from typing import List
+import numpy as np
 import torch
-import torchaudio
 import torch.utils.data
+import torchaudio as ta
 import torchaudio.functional as aF
 
 def amp_pha_stft(audio, n_fft, hop_size, win_size, center=True):
-    """   """
     hann_window = torch.hann_window(win_size).to(audio.device)
     stft_spec = torch.stft(audio, n_fft, hop_length=hop_size, win_length=win_size, window=hann_window,
                            center=center, pad_mode='reflect', normalized=False, return_complex=True)
@@ -20,7 +22,6 @@ def amp_pha_stft(audio, n_fft, hop_size, win_size, center=True):
 
 
 def amp_pha_istft(log_amp, pha, n_fft, hop_size, win_size, center=True):
-    
     amp = torch.exp(log_amp)
     com = torch.complex(amp*torch.cos(pha), amp*torch.sin(pha))
     hann_window = torch.hann_window(win_size).to(com.device)
@@ -28,69 +29,129 @@ def amp_pha_istft(log_amp, pha, n_fft, hop_size, win_size, center=True):
 
     return audio
 
+def get_audio_paths(paths: list, file_extensions=['.wav', '.flac']):
+    """ Get list of all audio paths """
+    audio_paths = []
+    if isinstance(paths, str):
+        paths = [paths]
+    for path in paths:
+        for root, dirs, files in os.walk(path):
+            audio_paths += [os.path.join(root, file) for file in files 
+                            if os.path.splitext(file)[-1].lower() in file_extensions] 
+    audio_paths.sort(key=lambda x: os.path.split(x)[-1])
+    
+    return audio_paths
 
-def get_dataset_filelist(a):
-    with open(a.input_training_file, 'r', encoding='utf-8') as fi:
-        training_indexes = [x.split('|')[0] for x in fi.read().split('\n') if len(x) > 0]
+def get_filename(path):
+    return os.path.splitext(os.path.basename(path))
 
-    with open(a.input_validation_file, 'r', encoding='utf-8') as fi:
-        validation_indexes = [x.split('|')[0] for x in fi.read().split('\n') if len(x) > 0]
-
-    return training_indexes, validation_indexes
-
-
+def make_dataset(config, mode:str):
+    return Dataset(
+        **config.dataset.common,
+        **config.dataset[mode],
+        mode=mode,
+    )
+    
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, training_indexes, wavs_dir, segment_size, hr_sampling_rate, lr_sampling_rate,
-                 split=True, shuffle=True, n_cache_reuse=1, device=None):
-        self.audio_indexes = training_indexes
-        random.seed(1234)
-        if shuffle:
-            random.shuffle(self.audio_indexes)
-        self.wavs_dir = wavs_dir
-        self.segment_size = segment_size
-        self.hr_sampling_rate = hr_sampling_rate
-        self.lr_sampling_rate = lr_sampling_rate
-        self.split = split
-        self.cached_wav = None
-        self.n_cache_reuse = n_cache_reuse
-        self._cache_ref_count = 0
-        self.device = device
+    def __init__(self,
+                 path_dir_nb: List[str],
+                 path_dir_wb: List[str],
+                 seg_len: float = 0.9,
+                 sr: int = 48000,
+                 mode: str = "train",
+                 ):
+        assert isinstance(path_dir_nb, list), "PATH must be a list"
 
-    def __getitem__(self, index):
-        filename = self.audio_indexes[index]
-        if self._cache_ref_count == 0:
-            audio, orig_sampling_rate = torchaudio.load(os.path.join(self.wavs_dir, filename + '.wav'))
-            self.cached_wav = audio
-            self._cache_ref_count = self.n_cache_reuse
-        else:
-            audio = self.cached_wav
-            self._cache_ref_count -= 1
+        self.seg_len = seg_len
+        self.mode = mode
+        self.sr = sr        
+        paths_wav_wb = []
+        paths_wav_nb = []
+    
+        # number of datasets -> ['path1','path2']
+        for i in range(len(path_dir_nb)):
+            self.path_dir_nb = path_dir_nb[i]
+            self.path_dir_wb = path_dir_wb[i]
 
-        if orig_sampling_rate == self.hr_sampling_rate:
-            audio_hr = audio
-        else:
-            audio_hr = aF.resample(audio, orig_freq=orig_sampling_rate, new_freq=self.hr_sampling_rate)
+            wb_files = get_audio_paths(self.path_dir_wb, file_extensions='.wav')
+            nb_files = get_audio_paths(self.path_dir_nb, file_extensions='.wav')
+            paths_wav_wb.extend(wb_files)
+            paths_wav_nb.extend(nb_files)
 
-        audio_lr = aF.resample(audio, orig_freq=orig_sampling_rate, new_freq=self.lr_sampling_rate)
-        audio_lr = aF.resample(audio_lr, orig_freq=self.lr_sampling_rate, new_freq=self.hr_sampling_rate)
-        audio_lr = audio_lr[:, : audio_hr.size(1)]
+            print(f"Index:{i} with {len(wb_files)} samples")
 
-        if self.split:
-            if audio_hr.size(1) >= self.segment_size:
-                max_audio_start = audio_hr.size(1) - self.segment_size
-                audio_start = random.randint(0, max_audio_start)
-                audio_hr = audio_hr[:, audio_start: audio_start+self.segment_size]
-                audio_lr = audio_lr[:, audio_start: audio_start+self.segment_size]
-            else:
-                audio_hr = torch.nn.functional.pad(audio_hr, (0, self.segment_size - audio_hr.size(1)), 'constant')
-                audio_lr = torch.nn.functional.pad(audio_lr, (0, self.segment_size - audio_lr.size(1)), 'constant')
+        if len(paths_wav_wb) != len(paths_wav_nb):
+            raise ValueError(f"Error: LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers are different!")
 
-        return (audio_hr.squeeze(), audio_lr.squeeze())
+        # make filename pairs: wb-nb        
+        self.filenames = list(zip(paths_wav_wb, paths_wav_nb))
+        print(f"LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers loaded!")
+
+    def _multiple_pad(self, wav, N=2048):
+        pad_len = (N - wav.shape[-1] % N) % N
+        wav = torch.nn.functional.pad(wav, (0, pad_len), mode='constant', value=0)
+        return wav
 
     def __len__(self):
+        return len(self.filenames)
+
+    def __getitem__(self, idx):
+        N = 2048
+        path_wav_wb, path_wav_nb = self.filenames[idx]
+
+        wav_nb, sr_nb = ta.load(path_wav_nb)
+        wav_wb, sr_wb = ta.load(path_wav_wb)
+
+        wav_wb = wav_wb.view(1, -1)
+        wav_nb = wav_nb.view(1, -1)
+
+        if self.mode == "train":
+            duration = int(self.seg_len * self.sr) # 43200
+            duration = (duration // N) * N # multiple of N
+            
+            if wav_nb.shape[-1] < duration:
+                wav_nb = self.ensure_length(wav_nb, duration)
+                wav_wb = self.ensure_length(wav_wb, duration)
+            elif wav_nb.shape[-1] > duration:
+                start_idx = np.random.randint(0, wav_nb.shape[-1] - duration)
+                wav_nb = wav_nb[:, start_idx:start_idx + duration]
+                wav_wb = wav_wb[:, start_idx:start_idx + duration]
+
+        elif self.mode == "val": 
+            wav_nb = self._multiple_pad(wav_nb)
+            wav_wb = self._multiple_pad(wav_wb)            
+        else:
+            sys.exit(f"unsupported mode! (train/val)")
+
+            # spec = self.get_spectrogram(wav_wb, power=2.0, log_scale=True) 
+            # spec = self.normalize_spec(spec)
+            # spec = self.extract_subband(spec, start=self.start_index, end=self.high_index) # start:5 : 3750Hz
+
+        return wav_wb, wav_nb, get_filename(path_wav_wb)[0]
+
+    @staticmethod
+    def ensure_length(wav, target_length):
+        target_length = int(target_length)
+        if wav.shape[1] < target_length:
+            pad_size = target_length - wav.shape[1]
+            wav = F.pad(wav, (0, pad_size))
+        elif wav.shape[1] > target_length:
+            wav = wav[:, :target_length]
+        return wav
         
-        return len(self.audio_indexes)
+    def set_maxlen(self, wav, max_lensec):
+        sr = self.sr
+        max_len = int(max_lensec * sr)
+        if wav.shape[1] > max_len:
+            # print(wav.shape, max_len)
+            wav = wav[:, :max_len]
+        return wav
+    def __len__(self):
+        return len(self.filenames)
 
 if __name__ == "__main__":
-    ## call dataset and checkout
-    print('temp')
+    from main import load_config
+    config_path = 'configs/config_template.yaml'
+    config = load_config(config_path)
+    train_dataset = make_dataset(config, 'train')
+    print(len(train_dataset))
