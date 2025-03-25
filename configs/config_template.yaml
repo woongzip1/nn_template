@@ -22,7 +22,6 @@ dataset:
     path_dir_nb: ["/home/woongzip/dataset_12/USAC44_12_core"]
     path_dir_wb: ["/home/woongzip/dataset_12/USAC44_GT"]
 
-
 stft:
   hop_size: 80
   win_size: 320
@@ -82,12 +81,12 @@ use_tri_stage:
   
 train:
   val_step: 1 # 180분 10000 step
-  pretrain_step: False # else False
-  ckpt_save_dir: "./ckpts/exp21"
+  pretrain_step: 1000 # else False
+  ckpt_save_dir: "./ckpts/"
   max_epochs: 60
 
   ckpt: False
-  ckpt_path: "/home/woongjib/Projects/MBSEANet/ckpts/exp21/step_260.0k_lsdh_0.4475.pth"
+  ckpt_path: ""
 
 eval:
   eval_dir_audio: "/home/woongjib/Projects/mbseanet_results/model_outputs/exp21"
