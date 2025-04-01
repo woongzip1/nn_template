@@ -4,6 +4,7 @@ from torchinfo import summary
 
 from box import Box
 from models.model import APNet_BWE_Model
+from models.seanet import SEANet
 from models.discriminators import MultiBandSTFTDiscriminator, SSDiscriminatorBlock
 
 import sys
@@ -12,6 +13,7 @@ from utils import count_model_params
 
 MODEL_MAP = {
     'generator': APNet_BWE_Model,
+    'seanet': SEANet,
     }
 DISCRIMINATOR_KWARG_MAP = {
         "MultiBandSTFTDiscriminator": lambda cfg: {
@@ -84,13 +86,21 @@ def prepare_generator(config:Box, MODEL_MAP):
     print(f"✅ Generator Parameters: {p/1_000_000:.2f}M")
 
     # Dummy forward
+    lr = torch.randn(1,1,48000)
     mag_nb = torch.randn(1,513,400)
     pha_nb = torch.randn(1,513,400)
     try:
-        summary(generator, input_data=[mag_nb, pha_nb], depth=2,
+        if gen_type == "seanet":
+            summary(generator, input_data=[lr], depth=2,
                 col_names=["input_size", "output_size", "num_params",])
+        else:
+            summary(generator, input_data=[mag_nb, pha_nb], depth=2,
+                col_names=["input_size", "output_size", "num_params",])
+        
     except Exception as e:
         print(f"⚠️ torchinfo.summary failed: {e}")
+        
+        
 
     return generator
 

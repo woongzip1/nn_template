@@ -1,2 +1,11 @@
 **__pycache__/
-notebooks/*
+notebooks/temp*.ipynb
+inference/
+ckpts/
+
+configs/config_seanet.yaml
+configs/config_template2.yaml
+
+*.png
+wandb/
+bash.sh

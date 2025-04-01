@@ -37,8 +37,8 @@ def load_config(config_path):
     with open(config_path, "r") as file:
         return Box(yaml.safe_load(file))
 
-def prepare_dataloader(config_path):
-    config = load_config(config_path)
+def prepare_dataloader(config):
+    # config = load_config(config_path)
     train_dataset = make_dataset(config, 'train')
     val_dataset = make_dataset(config, 'val')
 
@@ -50,7 +50,7 @@ def prepare_dataloader(config_path):
     train_loader = DataLoader(train_dataset, shuffle=True, **config.dataloader)
     val_loader_args = config.dataloader
     val_loader_args.batch_size = 1
-    val_loader = DataLoader(val_dataset, shuffle=True, **val_loader_args)
+    val_loader = DataLoader(val_dataset, shuffle=False, **val_loader_args)
 
     return train_loader, val_loader
 
@@ -67,7 +67,7 @@ def main(if_log_step):
         wandb.init(project=config['project_name'], entity='woongzip1', config=config, name=config['run_name'], notes=config['run_name'])
     
     # Prepare dataloader
-    train_loader, val_loader = prepare_dataloader(args.config)
+    train_loader, val_loader = prepare_dataloader(config)
 
     # Model selection
     generator = prepare_generator(config, MODEL_MAP)
